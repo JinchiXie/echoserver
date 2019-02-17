@@ -126,9 +126,11 @@ func (ts *testSystem) startReading(readChan chan<- *networkEvent, clients ...*te
 				// Read up to and including the first '\n' character.
 				msgBytes, err := reader.ReadBytes('\n')
 				if err != nil {
+
 					readChan <- &networkEvent{err: err}
 					return
 				}
+				fmt.Println(string(msgBytes))
 				// Notify the test runner that a message was read from the network.
 				readChan <- &networkEvent{
 					cli:     cli,
@@ -161,6 +163,7 @@ func (ts *testSystem) startWriting(writeChan chan<- *networkEvent, numMsgs int, 
 					time.Sleep(time.Duration(100) * time.Millisecond)
 				}
 			}
+			//fmt.Println(fmt.Sprintf("%d %t \n", cli.id, cli.slow))
 		}()
 	}
 }

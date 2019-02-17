@@ -1,7 +1,12 @@
-package crunner
+package main
 
 import (
+	"bufio"
 	"fmt"
+	"net"
+	"strconv"
+
+	"github.com/JinchiXie/echoserver/server"
 )
 
 const (
@@ -15,5 +20,18 @@ const (
 // read and print out the server's echoed response to standard output. Whether or
 // not you add any code to this file will not affect your grade.
 func main() {
-	fmt.Println("Not implemented.")
+	s := server.New()
+	s.Start(defaultPort)
+	conn, _ := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(defaultPort))
+	send := "test fggg fgfg\n"
+	conn.Write([]byte(send))
+	mes, _ := bufio.NewReader(conn).ReadBytes('\n')
+	fmt.Println("from server: " + string(mes))
+	//fmt.Println("send: " + send)
+	//fmt.Println("same : %t", string(mes) == send)
+	mes, error := bufio.NewReader(conn).ReadBytes('\n')
+	if error != nil {
+		fmt.Println(error.Error())
+	}
+	s.Close()
 }

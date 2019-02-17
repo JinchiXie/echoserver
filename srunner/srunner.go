@@ -1,15 +1,16 @@
-package srunner
+package main
 
 import (
 	"fmt"
-	"github.com/cmu440/p0"
+
+	"github.com/JinchiXie/echoserver/server"
 )
 
 const defaultPort = 9999
 
 func main() {
 	// Initialize the server.
-	server := p0.New()
+	server := server.New()
 	if server == nil {
 		fmt.Println("New() returned a nil server. Exiting...")
 		return
