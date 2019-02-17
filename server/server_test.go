@@ -1,6 +1,6 @@
 // Official tests for a MultiEchoServer implementation.
 
-package p0
+package server
 
 import (
 	"bufio"

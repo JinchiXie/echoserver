@@ -1,6 +1,6 @@
 // Defines the interface for a MultiEchoServer. DO NOT MODIFY THIS FILE!
 
-package p0
+package server
 
 // MultiEchoServer implements an "echo to everyone" socket server.
 type MultiEchoServer interface {
