@@ -5,33 +5,36 @@ package server
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
-	"sync"
-	"time"
 )
 
-type set map[net.Conn]bool
+type client struct {
+	conn     net.Conn
+	id       int
+	sendQuit chan bool
+	recQuit  chan bool
+	readMsg  chan []byte
+	writeMsg chan []byte
+}
+
 type multiEchoServer struct {
 	// TODO: implement this!
-	listener net.Listener
-	counter  int
-	close    chan int
-	quit     chan int
-	cons     set
-	mux      sync.Mutex
+	listener     net.Listener
+	clients      map[int]*client
+	quit         chan bool
+	curID        int
+	boradcastMsg chan []byte
 }
 
 // New creates and returns (but does not start) a new MultiEchoServer.
 func New() MultiEchoServer {
 	// TODO: implement this!
 	server := &multiEchoServer{
-		listener: nil,
-		counter:  0,
-		close:    make(chan int, 1),
-		quit:     make(chan int, 1),
-		cons:     make(set),
+		curID:        0,
+		boradcastMsg: make(chan []byte, 1),
+		quit:         make(chan bool, 1),
+		clients:      make(map[int]*client),
 	}
 	return server
 }
@@ -42,6 +45,7 @@ func (mes *multiEchoServer) Start(port int) error {
 	l, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err == nil {
 		mes.listener = l
+		go mes.bordcast()
 		go mes.serve()
 	} else {
 		fmt.Println("can't greate server error: " + err.Error())
@@ -59,89 +63,86 @@ func (mes *multiEchoServer) serve() {
 		default:
 			//mes.listener.SetDeadline(time.Now().Add(1e9))
 			conn, err := mes.listener.Accept()
-			if err == nil {
-				mes.atomInc()
-				mes.cons[conn] = true
-				go mes.handle(conn)
-			} else {
-				//fmt.Println("meet error")
-				return
+			if err != nil {
+				continue
 			}
+			cli := &client{
+				conn:     conn,
+				id:       mes.curID,
+				sendQuit: make(chan bool, 1),
+				recQuit:  make(chan bool, 1),
+				readMsg:  make(chan []byte, 1),
+				writeMsg: make(chan []byte, 1),
+			}
+			mes.clients[mes.curID] = cli
+			mes.curID++
+			go cli.loopRead(mes.boradcastMsg)
+			go cli.loopWrite()
+
 		}
 
 	}
 }
 
-func (mes *multiEchoServer) handle(conn net.Conn) {
-	//
-	defer conn.Close()
-	//defer fmt.Println(mes.atomLoad())
-	defer mes.atomDec()
-	//fmt.Println(mes.atomLoad())
-
-	//fmt.Println(mes.atomLoad())
-	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-	//for {
-	select {
-	case <-mes.close:
-		//fmt.Println("accept close")
-		return
-	default:
-		//fmt.Println("before read")
-		message, err := bufio.NewReader(conn).ReadBytes('\n')
-		if err == io.EOF {
-			return
+func (mes *multiEchoServer) bordcast() {
+	for {
+		data := <-mes.boradcastMsg
+		clients := mes.clients
+		for _, cli := range clients {
+			cli.writeMsg <- data
 		}
-		if err != nil {
-			//fmt.Println("server error: " + err.Error())
-		}
-		conn.Write([]byte(string(message)))
-
 	}
-	//}
+}
 
+func (cli *client) loopRead(boradcastMsg chan []byte) {
+	for {
+		select {
+		case <-cli.recQuit:
+			cli.sendQuit <- true
+			return
+		default:
+			msg, err := bufio.NewReader(cli.conn).ReadBytes('\n')
+			if err != nil {
+				cli.sendQuit <- true
+				return
+			}
+			boradcastMsg <- msg
+		}
+	}
+}
+
+func (cli *client) loopWrite() {
+	for {
+		select {
+		case msg := <-cli.writeMsg:
+			cli.conn.Write(msg)
+		case <-cli.sendQuit:
+			cli.conn.Close()
+			return
+
+		}
+	}
 }
 
 func (mes *multiEchoServer) Close() {
 	// TODO: implement this!
-	fmt.Println("send semo to mes.quit")
-	mes.quit <- 1
-	//fmt.Println("send semo to mes.quit done")
+	mes.quit <- true
 	mes.listener.Close()
-	for mes.atomLoad() != 0 {
-		select {
-		case mes.close <- 1:
-			//fmt.Println("send close semo")
-		default:
-			//fmt.Println("wait")
-
-		}
-		//fmt.Println(mes.atomLoad())
+	clients := mes.clients
+	for id := range clients {
+		mes.close(clients[id])
 	}
-	//fmt.Println("all close")
+}
+
+func (mes *multiEchoServer) close(cli *client) {
+	cli.conn.Close()
+	cli.recQuit <- true
+	delete(mes.clients, cli.id)
 }
 
 func (mes *multiEchoServer) Count() int {
 	// TODO: implement this!
-	return mes.atomLoad()
+	return len(mes.clients)
 }
 
 // TODO: add additional methods/functions below!
-func (mes *multiEchoServer) atomInc() {
-	defer mes.mux.Unlock()
-	mes.mux.Lock()
-	mes.counter++
-
-}
-
-func (mes *multiEchoServer) atomLoad() int {
-	defer mes.mux.Unlock()
-	mes.mux.Lock()
-	return mes.counter
-}
-
-func (mes *multiEchoServer) atomDec() {
-	defer mes.mux.Unlock()
-	mes.mux.Lock()
-	mes.counter--
-}
