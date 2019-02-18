@@ -105,6 +105,7 @@ func (cli *client) loopRead(boradcastMsg chan []byte) {
 			if err != nil {
 				cli.sendQuit <- true
 				return
+				//continue
 			}
 			boradcastMsg <- msg
 		}
