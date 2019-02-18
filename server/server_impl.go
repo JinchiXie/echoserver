@@ -16,6 +16,7 @@ type client struct {
 	recQuit  chan bool
 	readMsg  chan []byte
 	writeMsg chan []byte
+	mes      *multiEchoServer
 }
 
 type multiEchoServer struct {
@@ -73,6 +74,7 @@ func (mes *multiEchoServer) serve() {
 				recQuit:  make(chan bool, 1),
 				readMsg:  make(chan []byte, 1),
 				writeMsg: make(chan []byte, 1),
+				mes:      mes,
 			}
 			mes.clients[mes.curID] = cli
 			mes.curID++
@@ -118,7 +120,7 @@ func (cli *client) loopWrite() {
 		case msg := <-cli.writeMsg:
 			cli.conn.Write(msg)
 		case <-cli.sendQuit:
-			cli.conn.Close()
+			cli.mes.close(cli)
 			return
 
 		}
@@ -130,14 +132,13 @@ func (mes *multiEchoServer) Close() {
 	mes.quit <- true
 	mes.listener.Close()
 	clients := mes.clients
-	for id := range clients {
-		mes.close(clients[id])
+	for _, client := range clients {
+		client.recQuit <- true
 	}
 }
 
 func (mes *multiEchoServer) close(cli *client) {
 	cli.conn.Close()
-	cli.recQuit <- true
 	delete(mes.clients, cli.id)
 }
 
