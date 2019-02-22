@@ -17,6 +17,7 @@ type client struct {
 	readMsg  chan []byte
 	writeMsg chan []byte
 	mes      *multiEchoServer
+	curWrite int
 }
 
 type multiEchoServer struct {
@@ -33,7 +34,7 @@ func New() MultiEchoServer {
 	// TODO: implement this!
 	server := &multiEchoServer{
 		curID:        0,
-		boradcastMsg: make(chan []byte, 200),
+		boradcastMsg: make(chan []byte, 1),
 		quit:         make(chan bool, 1),
 		clients:      make(chan map[int]*client, 1),
 	}
@@ -75,8 +76,9 @@ func (mes *multiEchoServer) serve() {
 				sendQuit: make(chan bool, 1),
 				recQuit:  make(chan bool, 1),
 				//readMsg:  make(chan []byte, 1),
-				writeMsg: make(chan []byte, 100),
+				writeMsg: make(chan []byte, 30),
 				mes:      mes,
+				curWrite: 0,
 			}
 			clients := <-mes.clients
 			clients[mes.curID] = cli
@@ -95,8 +97,17 @@ func (mes *multiEchoServer) bordcast() {
 		data := <-mes.boradcastMsg
 		clients := <-mes.clients
 		for _, cli := range clients {
+			// if cli.curWrite < 100 {
+			// 	cli.curWrite++
+			// 	cli.writeMsg <- data
+			// }
 			//cli.writeMsg <- data
-			cli.writeMsg <- data
+			select {
+			case cli.writeMsg <- data:
+				//break
+			default:
+				//close(cli)
+			}
 		}
 		mes.clients <- clients
 	}
@@ -119,7 +130,9 @@ func (cli *client) loopWrite() {
 	for {
 		select {
 		case msg := <-cli.writeMsg:
+			//cli.conn.SetWriteDeadline(time.Now().Add(15000))
 			_, err := cli.conn.Write(msg)
+			//cli.curWrite--
 			if err != nil {
 				continue
 			}
