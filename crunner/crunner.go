@@ -25,13 +25,13 @@ func main() {
 	conn, _ := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(defaultPort))
 	send := "test fggg fgfg\n"
 	conn.Write([]byte(send))
-	mes, _ := bufio.NewReader(conn).ReadBytes('\n')
+	mes, error := bufio.NewReader(conn).ReadBytes('\n')
 	fmt.Println("from server: " + string(mes))
 	//fmt.Println("send: " + send)
 	//fmt.Println("same : %t", string(mes) == send)
-	mes, error := bufio.NewReader(conn).ReadBytes('\n')
 	if error != nil {
 		fmt.Println(error.Error())
 	}
+	fmt.Println("before connection closed")
 	s.Close()
 }

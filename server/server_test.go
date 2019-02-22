@@ -205,6 +205,7 @@ func (ts *testSystem) runTest(numMsgs, timeout int, normalClients, slowClients [
 	timeoutChan := time.After(time.Duration(timeout) * time.Millisecond)
 
 	for slowReads+normalReads < totalReads || slowWrites+normalWrites < totalWrites {
+		//fmt.Println("nread: " + strconv.Itoa(normalReads) + " nwrites:" + strconv.Itoa(normalWrites))
 		select {
 		case cmd := <-readChan:
 			cli, msg := cmd.cli, cmd.readMsg

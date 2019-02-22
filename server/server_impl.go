@@ -22,7 +22,7 @@ type client struct {
 type multiEchoServer struct {
 	// TODO: implement this!
 	listener     net.Listener
-	clients      map[int]*client
+	clients      chan map[int]*client
 	quit         chan bool
 	curID        int
 	boradcastMsg chan []byte
@@ -33,10 +33,11 @@ func New() MultiEchoServer {
 	// TODO: implement this!
 	server := &multiEchoServer{
 		curID:        0,
-		boradcastMsg: make(chan []byte, 1),
+		boradcastMsg: make(chan []byte, 200),
 		quit:         make(chan bool, 1),
-		clients:      make(map[int]*client),
+		clients:      make(chan map[int]*client, 1),
 	}
+	server.clients <- make(map[int]*client) //init clients
 	return server
 }
 
@@ -65,20 +66,23 @@ func (mes *multiEchoServer) serve() {
 			//mes.listener.SetDeadline(time.Now().Add(1e9))
 			conn, err := mes.listener.Accept()
 			if err != nil {
-				continue
+				//continue
+				return
 			}
 			cli := &client{
 				conn:     conn,
 				id:       mes.curID,
 				sendQuit: make(chan bool, 1),
 				recQuit:  make(chan bool, 1),
-				readMsg:  make(chan []byte, 1),
-				writeMsg: make(chan []byte, 1),
+				//readMsg:  make(chan []byte, 1),
+				writeMsg: make(chan []byte, 100),
 				mes:      mes,
 			}
-			mes.clients[mes.curID] = cli
+			clients := <-mes.clients
+			clients[mes.curID] = cli
+			mes.clients <- clients
 			mes.curID++
-			go cli.loopRead(mes.boradcastMsg)
+			go cli.loopRead()
 			go cli.loopWrite()
 
 		}
@@ -89,28 +93,25 @@ func (mes *multiEchoServer) serve() {
 func (mes *multiEchoServer) bordcast() {
 	for {
 		data := <-mes.boradcastMsg
-		clients := mes.clients
+		clients := <-mes.clients
 		for _, cli := range clients {
+			//cli.writeMsg <- data
 			cli.writeMsg <- data
 		}
+		mes.clients <- clients
 	}
 }
 
-func (cli *client) loopRead(boradcastMsg chan []byte) {
+func (cli *client) loopRead() {
+	reader := bufio.NewReader(cli.conn)
 	for {
-		select {
-		case <-cli.recQuit:
+		msg, err := reader.ReadBytes('\n')
+		if err != nil {
 			cli.sendQuit <- true
 			return
-		default:
-			msg, err := bufio.NewReader(cli.conn).ReadBytes('\n')
-			if err != nil {
-				cli.sendQuit <- true
-				return
-				//continue
-			}
-			boradcastMsg <- msg
+			//continue
 		}
+		cli.mes.boradcastMsg <- msg
 	}
 }
 
@@ -118,11 +119,14 @@ func (cli *client) loopWrite() {
 	for {
 		select {
 		case msg := <-cli.writeMsg:
-			cli.conn.Write(msg)
+			_, err := cli.conn.Write(msg)
+			if err != nil {
+				continue
+			}
 		case <-cli.sendQuit:
-			cli.mes.close(cli)
+			deleteClient(cli)
+			close(cli)
 			return
-
 		}
 	}
 }
@@ -131,20 +135,34 @@ func (mes *multiEchoServer) Close() {
 	// TODO: implement this!
 	mes.quit <- true
 	mes.listener.Close()
-	clients := mes.clients
+	clients := <-mes.clients
 	for _, client := range clients {
-		client.recQuit <- true
+		client := client
+		close(client)
 	}
+	mes.clients <- clients
 }
 
-func (mes *multiEchoServer) close(cli *client) {
+func close(cli *client) {
 	cli.conn.Close()
-	delete(mes.clients, cli.id)
+	//fmt.Println("connectin closed" + strconv.Itoa(cli.id))
+}
+
+func deleteClient(cli *client) {
+	clients := <-cli.mes.clients
+	if _, ok := clients[cli.id]; ok == true {
+		delete(clients, cli.id)
+	}
+	cli.mes.clients <- clients
 }
 
 func (mes *multiEchoServer) Count() int {
 	// TODO: implement this!
-	return len(mes.clients)
+	clients := <-mes.clients
+	defer func() {
+		mes.clients <- clients
+	}()
+	return len(clients)
 }
 
 // TODO: add additional methods/functions below!
